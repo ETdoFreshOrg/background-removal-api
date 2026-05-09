@@ -8,13 +8,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OMP_NUM_THREADS=4
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libjpeg-dev zlib1g-dev libglib2.0-0 && \
+    apt-get install -y --no-install-recommends libglib2.0-0 && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt
+
+# Pre-download the model at build time (~885MB)
+RUN python3 -c "from transformers import AutoModelForImageSegmentation; \
+    AutoModelForImageSegmentation.from_pretrained('briaai/RMBG-2.0', trust_remote_code=True); \
+    print('Model downloaded successfully')"
 
 COPY app ./app
 
@@ -23,7 +28,7 @@ VOLUME ["/models"]
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()" || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]

@@ -1,31 +1,26 @@
 import io
 import logging
 import os
+import sys
 import traceback
+from contextlib import asynccontextmanager
 from typing import Optional
-
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
-from fastapi.responses import Response
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bg-remove")
 
-try:
-    from PIL import Image
-    import torch
-    from torchvision import transforms
-    from transformers import AutoModelForImageSegmentation
-    log.info("All imports successful")
-except Exception as e:
-    log.error(f"Import failed: {e}")
-    traceback.print_exc()
-    raise
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi.responses import Response
+from PIL import Image
+import torch
+from torchvision import transforms
+from transformers import AutoModelForImageSegmentation
+
+log.info("All imports successful")
 
 MODEL_ID = os.getenv("RMBG_MODEL", "briaai/RMBG-2.0")
 API_KEY = os.getenv("API_KEY")
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "10"))
-
-app = FastAPI(title="Background Removal API", version="1.0.0")
 
 _model = None
 _transform = transforms.Compose(
@@ -37,24 +32,26 @@ _transform = transforms.Compose(
 )
 
 
-@app.on_event("startup")
-def load_model():
+@asynccontextmanager
+async def lifespan(application: FastAPI):
     global _model
-    try:
-        threads = int(os.getenv("TORCH_THREADS", "4"))
-        torch.set_num_threads(threads)
-        log.info(f"Loading model {MODEL_ID} (CPU, {threads} threads)...")
-        _model = (
-            AutoModelForImageSegmentation.from_pretrained(
-                MODEL_ID, trust_remote_code=True
-            )
-            .eval()
+    threads = int(os.getenv("TORCH_THREADS", "4"))
+    torch.set_num_threads(threads)
+    log.info(f"Loading model {MODEL_ID} (CPU, {threads} threads)...")
+    sys.stdout.flush()
+    _model = (
+        AutoModelForImageSegmentation.from_pretrained(
+            MODEL_ID, trust_remote_code=True
         )
-        log.info(f"Model loaded: {MODEL_ID}")
-    except Exception as e:
-        log.error(f"Failed to load model: {e}")
-        traceback.print_exc()
-        raise
+        .eval()
+    )
+    log.info(f"Model loaded: {MODEL_ID}")
+    sys.stdout.flush()
+    yield
+    log.info("Shutting down")
+
+
+app = FastAPI(title="Background Removal API", version="1.0.0", lifespan=lifespan)
 
 
 def verify_api_key(authorization: Optional[str] = Header(None)):
