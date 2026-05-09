@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -17,14 +16,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# Pre-download the model at build time (~885MB)
-# Uses Docker secret mount to avoid exposing HF token in image layers
-RUN --mount=type=secret,id=HF_TOKEN \
-    export HUGGING_FACE_HUB_TOKEN=$(cat /run/secrets/HF_TOKEN) && \
-    python3 -c "from transformers import AutoModelForImageSegmentation; \
-    AutoModelForImageSegmentation.from_pretrained('briaai/RMBG-2.0', trust_remote_code=True); \
-    print('Model downloaded successfully')"
-
 COPY app ./app
 
 RUN mkdir -p /models
@@ -32,7 +23,7 @@ VOLUME ["/models"]
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=5 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()" || exit 1
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
