@@ -35,19 +35,25 @@ _transform = transforms.Compose(
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     global _model
-    threads = int(os.getenv("TORCH_THREADS", "4"))
-    torch.set_num_threads(threads)
-    log.info(f"Loading model {MODEL_ID} (CPU, {threads} threads)...")
-    sys.stdout.flush()
-    _model = (
-        AutoModelForImageSegmentation.from_pretrained(
-            MODEL_ID, trust_remote_code=True,
-            token=os.getenv("HF_TOKEN"),
+    try:
+        threads = int(os.getenv("TORCH_THREADS", "4"))
+        torch.set_num_threads(threads)
+        log.info(f"Loading model {MODEL_ID} (CPU, {threads} threads)...")
+        sys.stdout.flush()
+        _model = (
+            AutoModelForImageSegmentation.from_pretrained(
+                MODEL_ID, trust_remote_code=True,
+                token=os.getenv("HF_TOKEN"),
+            )
+            .eval()
         )
-        .eval()
-    )
-    log.info(f"Model loaded: {MODEL_ID}")
-    sys.stdout.flush()
+        log.info(f"Model loaded: {MODEL_ID}")
+        sys.stdout.flush()
+    except Exception as e:
+        log.error(f"Failed to load model: {e}")
+        traceback.print_exc()
+        sys.stdout.flush()
+        raise
     yield
     log.info("Shutting down")
 
