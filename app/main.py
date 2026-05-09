@@ -41,7 +41,8 @@ async def lifespan(application: FastAPI):
     sys.stdout.flush()
     _model = (
         AutoModelForImageSegmentation.from_pretrained(
-            MODEL_ID, trust_remote_code=True
+            MODEL_ID, trust_remote_code=True,
+            token=os.getenv("HF_TOKEN"),
         )
         .eval()
     )
