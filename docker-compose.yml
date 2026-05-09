@@ -1,0 +1,14 @@
+services:
+  background-removal-api:
+    build: .
+    environment:
+      RMBG_MODEL: ${RMBG_MODEL:-briaai/RMBG-2.0}
+      TORCH_THREADS: ${TORCH_THREADS:-4}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
+      API_KEY: ${API_KEY:-}
+    volumes:
+      - rmbg-models:/models
+    restart: unless-stopped
+
+volumes:
+  rmbg-models:
