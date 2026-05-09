@@ -1,13 +1,25 @@
 import io
+import logging
 import os
+import traceback
 from typing import Optional
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import Response
-from PIL import Image
-import torch
-from torchvision import transforms
-from transformers import AutoModelForImageSegmentation
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("bg-remove")
+
+try:
+    from PIL import Image
+    import torch
+    from torchvision import transforms
+    from transformers import AutoModelForImageSegmentation
+    log.info("All imports successful")
+except Exception as e:
+    log.error(f"Import failed: {e}")
+    traceback.print_exc()
+    raise
 
 MODEL_ID = os.getenv("RMBG_MODEL", "briaai/RMBG-2.0")
 API_KEY = os.getenv("API_KEY")
@@ -28,16 +40,21 @@ _transform = transforms.Compose(
 @app.on_event("startup")
 def load_model():
     global _model
-    threads = int(os.getenv("TORCH_THREADS", "4"))
-    torch.set_num_threads(threads)
-    print(f"Loading model {MODEL_ID} (CPU, {threads} threads)...")
-    _model = (
-        AutoModelForImageSegmentation.from_pretrained(
-            MODEL_ID, trust_remote_code=True
+    try:
+        threads = int(os.getenv("TORCH_THREADS", "4"))
+        torch.set_num_threads(threads)
+        log.info(f"Loading model {MODEL_ID} (CPU, {threads} threads)...")
+        _model = (
+            AutoModelForImageSegmentation.from_pretrained(
+                MODEL_ID, trust_remote_code=True
+            )
+            .eval()
         )
-        .eval()
-    )
-    print(f"Model loaded: {MODEL_ID}")
+        log.info(f"Model loaded: {MODEL_ID}")
+    except Exception as e:
+        log.error(f"Failed to load model: {e}")
+        traceback.print_exc()
+        raise
 
 
 def verify_api_key(authorization: Optional[str] = Header(None)):

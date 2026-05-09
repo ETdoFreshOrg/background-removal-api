@@ -7,6 +7,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TORCH_HOME=/models \
     OMP_NUM_THREADS=4
 
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libjpeg-dev zlib1g-dev libglib2.0-0 && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY requirements.txt .
