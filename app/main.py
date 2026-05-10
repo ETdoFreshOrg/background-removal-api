@@ -196,7 +196,8 @@ UI_HTML = """<!DOCTYPE html>
   .compare-card .img-wrap.checker {
     background: repeating-conic-gradient(#2a2a2a 0% 25%, #222 0% 50%) 50%/20px 20px;
   }
-  .compare-card img { max-width: 100%; max-height: 400px; border-radius: 6px; }
+  .compare-card img { max-width: 100%; max-height: 400px; border-radius: 6px; cursor: pointer; transition: transform 0.15s; }
+  .compare-card img:hover { transform: scale(1.02); }
   .result-actions {
     display: flex; gap: 0.75rem; justify-content: center; margin-top: 1.5rem;
   }
@@ -211,6 +212,41 @@ UI_HTML = """<!DOCTYPE html>
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .btn.secondary { background: #333; }
   .btn.secondary:hover { background: #444; }
+
+  /* Lightbox */
+  #lightbox {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88);
+    z-index: 100; flex-direction: column; align-items: center; justify-content: center;
+  }
+  #lightbox.active { display: flex; }
+  #lb-close {
+    position: absolute; top: 1rem; right: 1.5rem; font-size: 2rem;
+    color: #aaa; cursor: pointer; background: none; border: none; z-index: 101;
+  }
+  #lb-close:hover { color: #fff; }
+  #lb-img-wrap {
+    display: flex; justify-content: center; align-items: center;
+    max-width: 90vw; max-height: calc(90vh - 60px); border-radius: 8px;
+    overflow: hidden; transition: background 0.2s;
+  }
+  #lb-img-wrap img { max-width: 90vw; max-height: calc(90vh - 60px); object-fit: contain; }
+  #bg-bar {
+    display: flex; gap: 6px; padding: 10px 16px; background: rgba(30,30,30,0.95);
+    border-radius: 10px; margin-top: 12px; align-items: center;
+  }
+  #bg-bar .bar-label { color: #888; font-size: 0.75rem; margin-right: 4px; }
+  .bg-swatch {
+    width: 26px; height: 26px; border-radius: 6px; cursor: pointer; border: 2px solid transparent;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .bg-swatch:hover { transform: scale(1.15); }
+  .bg-swatch.active { border-color: #646cff; }
+  .bg-swatch.sw-checker-light {
+    background: repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50%/10px 10px;
+  }
+  .bg-swatch.sw-checker-dark {
+    background: repeating-conic-gradient(#2a2a2a 0% 25%, #222 0% 50%) 50%/10px 10px;
+  }
 
   #status { margin-top: 1.5rem; min-height: 1.5rem; color: #888; }
   #status.error { color: #ff6b6b; }
@@ -256,6 +292,25 @@ UI_HTML = """<!DOCTYPE html>
   <div class="result-actions">
     <button class="btn" id="download-btn">Download</button>
     <button class="btn secondary" id="new-btn">Remove another</button>
+  </div>
+</div>
+
+<div id="lightbox">
+  <button id="lb-close">&times;</button>
+  <div id="lb-img-wrap"><img id="lb-img"></div>
+  <div id="bg-bar" style="display:none">
+    <span class="bar-label">BG:</span>
+    <div class="bg-swatch active sw-checker-dark"  data-bg="checker-dark"  title="Dark checker"></div>
+    <div class="bg-swatch sw-checker-light"         data-bg="checker-light" title="Light checker"></div>
+    <div class="bg-swatch" style="background:#fff"  data-bg="#ffffff"       title="White"></div>
+    <div class="bg-swatch" style="background:#aaa"  data-bg="#aaaaaa"       title="Grey"></div>
+    <div class="bg-swatch" style="background:#000"  data-bg="#000000"       title="Black"></div>
+    <div class="bg-swatch" style="background:#e74c3c" data-bg="#e74c3c"    title="Red"></div>
+    <div class="bg-swatch" style="background:#2ecc71" data-bg="#2ecc71"    title="Green"></div>
+    <div class="bg-swatch" style="background:#3498db" data-bg="#3498db"    title="Blue"></div>
+    <div class="bg-swatch" style="background:#1abc9c" data-bg="#1abc9c"    title="Cyan"></div>
+    <div class="bg-swatch" style="background:#f1c40f" data-bg="#f1c40f"    title="Yellow"></div>
+    <div class="bg-swatch" style="background:#e84393" data-bg="#e84393"    title="Magenta"></div>
   </div>
 </div>
 
@@ -404,6 +459,55 @@ function resetUI() {
   dropZone.style.display = '';
   setStatus('');
 }
+
+// Lightbox
+const lightbox = document.getElementById('lightbox');
+const lbImg = document.getElementById('lb-img');
+const lbWrap = document.getElementById('lb-img-wrap');
+const bgBar = document.getElementById('bg-bar');
+let lbMode = null; // 'orig' or 'result'
+
+const checkerDark = 'repeating-conic-gradient(#2a2a2a 0% 25%, #222 0% 50%) 50%/20px 20px';
+const checkerLight = 'repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50%/20px 20px';
+
+function openLightbox(mode) {
+  lbMode = mode;
+  if (mode === 'orig') {
+    lbImg.src = resultOrig.src;
+    lbWrap.style.background = '#1a1a1a';
+    bgBar.style.display = 'none';
+  } else {
+    lbImg.src = resultImg.src;
+    lbWrap.style.background = checkerDark;
+    bgBar.style.display = 'flex';
+    // reset swatch selection
+    bgBar.querySelectorAll('.bg-swatch').forEach(s => s.classList.remove('active'));
+    bgBar.querySelector('[data-bg="checker-dark"]').classList.add('active');
+  }
+  lightbox.classList.add('active');
+}
+
+function closeLightbox() {
+  lightbox.classList.remove('active');
+  lbMode = null;
+}
+
+resultOrig.addEventListener('click', () => openLightbox('orig'));
+resultImg.addEventListener('click', () => openLightbox('result'));
+document.getElementById('lb-close').addEventListener('click', closeLightbox);
+lightbox.addEventListener('click', e => { if (e.target === lightbox) closeLightbox(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+bgBar.addEventListener('click', e => {
+  const sw = e.target.closest('.bg-swatch');
+  if (!sw) return;
+  bgBar.querySelectorAll('.bg-swatch').forEach(s => s.classList.remove('active'));
+  sw.classList.add('active');
+  const bg = sw.dataset.bg;
+  if (bg === 'checker-dark') lbWrap.style.background = checkerDark;
+  else if (bg === 'checker-light') lbWrap.style.background = checkerLight;
+  else lbWrap.style.background = bg;
+});
 </script>
 </body>
 </html>"""
