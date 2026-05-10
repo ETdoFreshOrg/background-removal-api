@@ -82,9 +82,11 @@ UI_HTML = """<!DOCTYPE html>
   #drop-zone .icon { font-size: 3rem; margin-bottom: 0.5rem; }
   #drop-zone .label { color: #aaa; font-size: 0.95rem; }
   #drop-zone .label span { color: #646cff; text-decoration: underline; }
+  #drop-zone .hint { color: #555; font-size: 0.8rem; margin-top: 0.5rem; }
   #file-input { display: none; }
   #status { margin-top: 1.5rem; min-height: 1.5rem; color: #888; }
   #status.error { color: #ff6b6b; }
+  #paste-preview { display:none; margin-top:1rem; max-width:200px; max-height:200px; border-radius:8px; }
   #result-area {
     display: none; margin-top: 2rem; width: 100%; max-width: 600px;
     background: #1a1a1a; border-radius: 16px; overflow: hidden;
@@ -115,7 +117,9 @@ UI_HTML = """<!DOCTYPE html>
 <div id="drop-zone">
   <div class="icon">🖼️</div>
   <div class="label">Drag & drop an image here, or <span>browse</span></div>
+  <div class="hint">You can also Ctrl+V to paste from clipboard</div>
   <input type="file" id="file-input" accept="image/png,image/jpeg,image/webp">
+  <img id="paste-preview">
 </div>
 <div id="status"></div>
 <div id="result-area">
@@ -148,6 +152,22 @@ dropZone.addEventListener('drop', e => {
 });
 fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
 newBtn.addEventListener('click', resetUI);
+
+document.addEventListener('paste', e => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (file) {
+        const named = new File([file], 'pasted-image.' + (file.type.split('/')[1] || 'png'), { type: file.type });
+        handleFile(named);
+      }
+      return;
+    }
+  }
+});
 
 async function handleFile(file) {
   if (!file.type.startsWith('image/')) { setStatus('Please upload an image file.', true); return; }
