@@ -411,6 +411,7 @@ async function handleFile(file) {
 
     resultBlob = await resp.blob();
     const procMs = resp.headers.get('X-Processing-Time-Ms');
+    const jobId = resp.headers.get('X-Job-Id');
     const procSec = procMs ? (parseInt(procMs) / 1000).toFixed(1) : null;
 
     // Complete progress bar
@@ -425,6 +426,9 @@ async function handleFile(file) {
 
     processingArea.style.display = 'none';
     resultArea.style.display = 'block';
+
+    // Update URL so this result is shareable
+    if (jobId) history.replaceState(null, '', '?job=' + jobId);
 
     downloadBtn.onclick = () => {
       const a = document.createElement('a');
@@ -458,6 +462,7 @@ function resetUI() {
   progressFill.style.width = '0%';
   dropZone.style.display = '';
   setStatus('');
+  history.replaceState(null, '', '/');
 }
 
 // Lightbox
@@ -508,6 +513,35 @@ bgBar.addEventListener('click', e => {
   else if (bg === 'checker-light') lbWrap.style.background = checkerLight;
   else lbWrap.style.background = bg;
 });
+
+// Load job from URL param on page load
+(async function() {
+  const params = new URLSearchParams(location.search);
+  const jobId = params.get('job');
+  if (!jobId) return;
+  try {
+    const meta = await fetch('/job/' + jobId).then(r => r.json());
+    const ext = (meta.filename || 'image.png').split('.').pop();
+    dropZone.style.display = 'none';
+    currentFileName = meta.filename;
+    resultOrig.src = '/history/images/' + jobId + '_orig.' + ext;
+    resultImg.src = '/history/images/' + jobId + '_result.png';
+    fileInfo.textContent = meta.filename || 'image';
+    const procSec = meta.processingTimeMs ? (meta.processingTimeMs / 1000).toFixed(1) : '';
+    timeBadge.textContent = procSec ? procSec + 's' : '';
+    resultBlob = null; // download will fetch from server
+    downloadBtn.onclick = () => {
+      const a = document.createElement('a');
+      a.href = '/history/images/' + jobId + '_result.png';
+      a.download = (meta.filename || 'image').replace(/\\.[^.]+$/, '') + '-nobg.png';
+      a.click();
+    };
+    resultArea.style.display = 'block';
+  } catch {
+    // job not found, show normal UI
+    history.replaceState(null, '', '/');
+  }
+})();
 </script>
 </body>
 </html>"""
@@ -682,7 +716,7 @@ function render() {
         </div>
         <div class="card-info">
           <span class="fname">${esc(it.filename)}</span>
-          <span class="meta"><span class="time">${(it.processingTimeMs/1000).toFixed(1)}s</span> &middot; ${fmtDate(it.timestamp)}</span>
+          <span class="meta"><span class="time">${(it.processingTimeMs/1000).toFixed(1)}s</span> &middot; ${fmtDate(it.timestamp)} &middot; <a href="/?job=${it.id}" style="color:#646cff;text-decoration:none" onclick="event.stopPropagation()">view</a></span>
         </div>
       </div>`;
   }).join('');
@@ -833,5 +867,14 @@ async def remove_bg(
     return Response(
         content=result_bytes,
         media_type="image/png",
-        headers={"X-Processing-Time-Ms": str(processing_ms)},
+        headers={"X-Processing-Time-Ms": str(processing_ms), "X-Job-Id": job_id},
     )
+
+
+@app.get("/job/{job_id}")
+def job_detail(job_id: str):
+    """Return metadata for a specific job."""
+    for entry in load_history():
+        if entry.get("id") == job_id:
+            return entry
+    raise HTTPException(status_code=404, detail="Job not found")
