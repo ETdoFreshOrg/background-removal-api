@@ -68,7 +68,7 @@ def prune_history(entries):
     return entries[len(entries) - MAX_HISTORY :]
 
 
-def add_history_entry(job_id, filename, processing_time_ms):
+def add_history_entry(job_id, filename, processing_time_ms=None):
     entries = load_history()
     entries.append(
         {
@@ -79,6 +79,15 @@ def add_history_entry(job_id, filename, processing_time_ms):
         }
     )
     entries = prune_history(entries)
+    save_history(entries)
+
+
+def complete_history_entry(job_id, processing_time_ms):
+    entries = load_history()
+    for entry in entries:
+        if entry.get("id") == job_id:
+            entry["processingTimeMs"] = processing_time_ms
+            break
     save_history(entries)
 
 
@@ -528,22 +537,70 @@ bgBar.addEventListener('click', e => {
     });
     const ext = (meta.filename || 'image.png').split('.').pop();
     dropZone.style.display = 'none';
-    currentFileName = meta.filename;
-    resultOrig.src = '/history/images/' + jobId + '_orig.' + ext;
-    resultImg.src = '/history/images/' + jobId + '_result.png';
-    fileInfo.textContent = meta.filename || 'image';
-    const procSec = meta.processingTimeMs ? (meta.processingTimeMs / 1000).toFixed(1) : '';
-    timeBadge.textContent = procSec ? procSec + 's' : '';
-    resultBlob = null; // download will fetch from server
-    downloadBtn.onclick = () => {
-      const a = document.createElement('a');
-      a.href = '/history/images/' + jobId + '_result.png';
-      a.download = (meta.filename || 'image').replace(/\\.[^.]+$/, '') + '-nobg.png';
-      a.click();
-    };
-    resultArea.style.display = 'block';
+
+    if (meta.processingTimeMs != null) {
+      // Completed job — show side-by-side result
+      currentFileName = meta.filename;
+      resultOrig.src = '/history/images/' + jobId + '_orig.' + ext;
+      resultImg.src = '/history/images/' + jobId + '_result.png';
+      const procSec = (meta.processingTimeMs / 1000).toFixed(1);
+      timeBadge.textContent = procSec + 's';
+      resultBlob = null;
+      downloadBtn.onclick = () => {
+        const a = document.createElement('a');
+        a.href = '/history/images/' + jobId + '_result.png';
+        a.download = (meta.filename || 'image').replace(/\\.[^.]+$/, '') + '-nobg.png';
+        a.click();
+      };
+      resultArea.style.display = 'block';
+    } else {
+      // Pending job — show original + spinner, poll until done
+      origPreview.src = '/history/images/' + jobId + '_orig.' + ext;
+      resultOrig.src = origPreview.src;
+      fileInfo.textContent = meta.filename || 'image';
+      processingArea.style.display = 'block';
+      progressFill.style.transition = 'none';
+      progressFill.style.width = '0%';
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          progressFill.style.transition = 'width 25s cubic-bezier(0.25, 0.1, 0.25, 1)';
+          progressFill.style.width = '97%';
+        });
+      });
+      const pollStart = performance.now();
+      const pollTimer = setInterval(() => {
+        elapsedEl.textContent = ((performance.now() - pollStart) / 1000).toFixed(1) + 's';
+      }, 100);
+      const poll = async () => {
+        try {
+          const m = await fetch('/job/' + jobId).then(r => r.json());
+          if (m.processingTimeMs != null) {
+            clearInterval(pollTimer);
+            progressFill.style.transition = 'width 0.3s ease';
+            progressFill.style.width = '100%';
+            resultImg.src = '/history/images/' + jobId + '_result.png';
+            const procSec = (m.processingTimeMs / 1000).toFixed(1);
+            timeBadge.textContent = procSec + 's';
+            resultBlob = null;
+            downloadBtn.onclick = () => {
+              const a = document.createElement('a');
+              a.href = '/history/images/' + jobId + '_result.png';
+              a.download = (m.filename || 'image').replace(/\\.[^.]+$/, '') + '-nobg.png';
+              a.click();
+            };
+            processingArea.style.display = 'none';
+            resultArea.style.display = 'block';
+          } else {
+            setTimeout(poll, 1000);
+          }
+        } catch {
+          setTimeout(poll, 2000);
+        }
+      };
+      setTimeout(poll, 1000);
+    }
   } catch {
-    // job not found or still processing — show normal UI
+    // job not found — show normal UI
     history.replaceState(null, '', '/');
   }
 })();
@@ -853,6 +910,9 @@ async def remove_bg(
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
     orig_path.write_bytes(data)
 
+    # Record pending history entry (so ?job= pages show the original + spinner)
+    add_history_entry(job_id, file.filename or "image.png")
+
     # Inference
     t0 = time.time()
     input_tensor = _transform(image).unsqueeze(0)
@@ -870,8 +930,8 @@ async def remove_bg(
     result_path = HISTORY_DIR / f"{job_id}_result.png"
     result_path.write_bytes(result_bytes)
 
-    # Record history
-    add_history_entry(job_id, file.filename or "image.png", processing_ms)
+    # Update history entry with processing time
+    complete_history_entry(job_id, processing_ms)
 
     return Response(
         content=result_bytes,
