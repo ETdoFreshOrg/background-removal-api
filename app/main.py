@@ -329,13 +329,13 @@ async function handleFile(file) {
   resultArea.style.display = 'none';
   setStatus('');
 
-  // Start progress animation + timer
+  // Start progress animation: ease to 97% over 25s, pause there until done
   progressFill.style.transition = 'none';
   progressFill.style.width = '0%';
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      progressFill.style.transition = 'width 5s ease-out';
-      progressFill.style.width = '90%';
+      progressFill.style.transition = 'width 25s cubic-bezier(0.25, 0.1, 0.25, 1)';
+      progressFill.style.width = '97%';
     });
   });
 
