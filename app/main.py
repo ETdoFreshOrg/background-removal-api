@@ -14,7 +14,7 @@ from typing import Optional
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bg-remove")
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from PIL import Image
 import torch
@@ -373,6 +373,10 @@ async function handleFile(file) {
 
   currentFileName = file.name;
 
+  // Generate job ID immediately and update URL
+  const pendingId = [...crypto.getRandomValues(new Uint8Array(4))].map(b => b.toString(16).padStart(2,'0')).join('');
+  history.replaceState(null, '', '?job=' + pendingId);
+
   // Show original preview
   const origUrl = URL.createObjectURL(file);
   origPreview.src = origUrl;
@@ -403,6 +407,7 @@ async function handleFile(file) {
   try {
     const form = new FormData();
     form.append('file', file);
+    form.append('job_id', pendingId);
     const resp = await fetch('/remove-bg', { method: 'POST', body: form });
     if (!resp.ok) {
       const text = await resp.text();
@@ -426,9 +431,6 @@ async function handleFile(file) {
 
     processingArea.style.display = 'none';
     resultArea.style.display = 'block';
-
-    // Update URL so this result is shareable
-    if (jobId) history.replaceState(null, '', '?job=' + jobId);
 
     downloadBtn.onclick = () => {
       const a = document.createElement('a');
@@ -520,7 +522,10 @@ bgBar.addEventListener('click', e => {
   const jobId = params.get('job');
   if (!jobId) return;
   try {
-    const meta = await fetch('/job/' + jobId).then(r => r.json());
+    const meta = await fetch('/job/' + jobId).then(r => {
+      if (!r.ok) throw new Error('not found');
+      return r.json();
+    });
     const ext = (meta.filename || 'image.png').split('.').pop();
     dropZone.style.display = 'none';
     currentFileName = meta.filename;
@@ -538,7 +543,7 @@ bgBar.addEventListener('click', e => {
     };
     resultArea.style.display = 'block';
   } catch {
-    // job not found, show normal UI
+    // job not found or still processing — show normal UI
     history.replaceState(null, '', '/');
   }
 })();
@@ -819,6 +824,7 @@ def health():
 @app.post("/remove-bg")
 async def remove_bg(
     file: UploadFile = File(...),
+    job_id: Optional[str] = Form(None),
 ):
     if _model is None:
         raise HTTPException(status_code=503, detail="Model not loaded yet")
@@ -835,8 +841,11 @@ async def remove_bg(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid image file")
 
-    # Save original for history
-    job_id = uuid.uuid4().hex[:8]
+    # Save original for history — use client-provided ID if valid
+    if job_id and len(job_id) == 8 and all(c in '0123456789abcdef' for c in job_id.lower()):
+        job_id = job_id.lower()
+    else:
+        job_id = uuid.uuid4().hex[:8]
     orig_ext = (file.filename or "image.png").rsplit(".", 1)[-1].lower()
     if orig_ext not in ("png", "jpg", "jpeg", "webp"):
         orig_ext = "png"
