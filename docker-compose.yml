@@ -3,9 +3,22 @@ services:
     build: .
     environment:
       RMBG_MODEL: ${RMBG_MODEL:-briaai/RMBG-2.0}
-      TORCH_THREADS: ${TORCH_THREADS:-4}
+      TORCH_DEVICE: ${TORCH_DEVICE:-cuda}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
       API_KEY: ${API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - "993"   # render
+      - "44"    # video
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    ipc: host
+    shm_size: 8g
     volumes:
       - rmbg-models:/models
     restart: unless-stopped

@@ -1,11 +1,10 @@
-FROM python:3.11-slim
+FROM rocm/pytorch:rocm7.2_ubuntu24.04_py3.12_pytorch_release_2.9.1
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HOME=/models \
-    TORCH_HOME=/models \
-    OMP_NUM_THREADS=4
+    TORCH_HOME=/models
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends libglib2.0-0 && \
