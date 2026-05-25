@@ -31,6 +31,7 @@ HISTORY_JSON = HISTORY_DIR / "history.json"
 MAX_HISTORY = 100
 
 _model = None
+_device = torch.device("cpu")
 _transform = transforms.Compose(
     [
         transforms.Resize((1024, 1024)),
@@ -93,11 +94,22 @@ def complete_history_entry(job_id, processing_time_ms):
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    global _model
+    global _model, _device
     try:
         threads = int(os.getenv("TORCH_THREADS", "4"))
         torch.set_num_threads(threads)
-        log.info(f"Loading model {MODEL_ID} (CPU, {threads} threads)...")
+        requested_device = os.getenv("TORCH_DEVICE", "auto").lower().strip()
+        if requested_device == "auto":
+            _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        elif requested_device == "cuda" and not torch.cuda.is_available():
+            log.warning("TORCH_DEVICE=cuda requested, but CUDA is not available; falling back to CPU")
+            _device = torch.device("cpu")
+        else:
+            _device = torch.device(requested_device)
+        log.info(
+            f"Loading model {MODEL_ID} on {_device} "
+            f"(cuda_available={torch.cuda.is_available()}, {threads} CPU threads)..."
+        )
         sys.stdout.flush()
         _model = (
             AutoModelForImageSegmentation.from_pretrained(
@@ -105,6 +117,7 @@ async def lifespan(application: FastAPI):
                 token=os.getenv("HF_TOKEN"),
             )
             .eval()
+            .to(_device)
         )
         log.info(f"Model loaded: {MODEL_ID}")
         sys.stdout.flush()
@@ -874,7 +887,10 @@ def health():
     return {
         "status": "ok" if loaded else "loading",
         "model": MODEL_ID,
-        "device": "cpu",
+        "device": str(_device),
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_device_count": torch.cuda.device_count(),
+        "cuda_device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
     }
 
 
@@ -915,7 +931,7 @@ async def remove_bg(
 
     # Inference
     t0 = time.time()
-    input_tensor = _transform(image).unsqueeze(0)
+    input_tensor = _transform(image).unsqueeze(0).to(_device)
     with torch.no_grad():
         preds = _model(input_tensor)[-1].sigmoid().cpu()
     mask = transforms.ToPILImage()(preds[0].squeeze()).resize(image.size)
