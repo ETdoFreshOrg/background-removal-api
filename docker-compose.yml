@@ -21,7 +21,13 @@ services:
     shm_size: 8g
     volumes:
       - rmbg-models:/models
+    networks:
+      - dokploy-network
     restart: unless-stopped
+
+networks:
+  dokploy-network:
+    external: true
 
 volumes:
   rmbg-models:
