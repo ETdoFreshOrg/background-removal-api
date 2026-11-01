@@ -8,7 +8,9 @@ services:
       API_KEY: ${API_KEY:-}
     volumes:
       - rmbg-models:/models
+      - rmbg-history:/app/history
     restart: unless-stopped
 
 volumes:
   rmbg-models:
+  rmbg-history:
