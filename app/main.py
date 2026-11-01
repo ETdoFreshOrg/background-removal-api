@@ -127,7 +127,8 @@ async def lifespan(application: FastAPI):
         sys.stdout.flush()
         raise
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-    yield
+    async with mcp_server.session_manager.run():
+        yield
     log.info("Shutting down")
 
 
@@ -963,3 +964,21 @@ def job_detail(job_id: str):
         if entry.get("id") == job_id:
             return entry
     raise HTTPException(status_code=404, detail="Job not found")
+
+
+# MCP uses the same processor and history as /remove-bg. Its transport always
+# requires the configured API key, independently of the public upload UI.
+from .mcp_server import create_mcp, RequireMcpKey
+
+
+async def mcp_process_image(data, filename):
+    response = await remove_bg(UploadFile(filename=filename, file=io.BytesIO(data)), None)
+    return response.body, json.dumps({
+        "job_id": response.headers.get("X-Job-Id"),
+        "processing_time_ms": response.headers.get("X-Processing-Time-Ms"),
+        "mime_type": "image/png",
+    })
+
+
+mcp_server = create_mcp(mcp_process_image, health, MAX_UPLOAD_MB)
+app.mount("/", RequireMcpKey(mcp_server.streamable_http_app(), API_KEY))
