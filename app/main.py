@@ -977,8 +977,9 @@ def job_detail(job_id: str):
 
 
 # MCP uses the same processor and history as /remove-bg. Its transport always
-# requires the configured API key, independently of the public upload UI.
-from .mcp_server import create_mcp, RequireMcpKey
+# requires owner-key OAuth, independently of the public upload UI.
+from .mcp_server import create_mcp
+from .oauth import OwnerOAuth
 
 
 async def mcp_process_image(data, filename):
@@ -991,4 +992,5 @@ async def mcp_process_image(data, filename):
 
 
 mcp_server = create_mcp(mcp_process_image, health, MAX_UPLOAD_MB)
-app.mount("/", RequireMcpKey(mcp_server.streamable_http_app(), API_KEY))
+mcp_oauth = OwnerOAuth(os.getenv('MCP_OWNER_KEY', ''), os.getenv('PUBLIC_ORIGIN', 'https://bgremove.etdofresh.com'), os.getenv('OAUTH_DB', '/data/oauth.db'))
+app.mount("/", mcp_oauth.application(mcp_server.streamable_http_app()))

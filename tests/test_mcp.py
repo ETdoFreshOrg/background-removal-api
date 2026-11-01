@@ -5,7 +5,9 @@ from contextlib import asynccontextmanager
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.testclient import TestClient
-from app.mcp_server import create_mcp, RequireMcpKey
+from app.mcp_server import create_mcp
+from app.oauth import OwnerOAuth
+from oauth_client import sign_in
 
 
 class McpTests(unittest.TestCase):
@@ -23,14 +25,17 @@ class McpTests(unittest.TestCase):
             async with self.server.session_manager.run():
                 yield
 
-        app = Starlette(routes=[Mount('/', app=RequireMcpKey(self.server.streamable_http_app(), 'test-key'))], lifespan=lifespan)
-        self.client = TestClient(app).__enter__()
+        self.oauth = OwnerOAuth('fixture-owner-key', 'https://testserver')
+        app = Starlette(routes=[Mount('/', app=self.oauth.application(self.server.streamable_http_app()))], lifespan=lifespan)
+        self.client = TestClient(app, base_url='https://testserver').__enter__()
+        self.token = sign_in(self.client)[0]['access_token']
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
+        self.oauth.db.close()
 
-    def rpc(self, method, params=None, key='test-key'):
-        return self.client.post('/mcp', headers={'Authorization': 'Bearer '+key, 'Accept': 'application/json, text/event-stream'}, json={'jsonrpc':'2.0', 'id':1, 'method':method, 'params':params or {}})
+    def rpc(self, method, params=None, key=None):
+        return self.client.post('/mcp', headers={'Authorization': 'Bearer '+(key or self.token), 'Accept': 'application/json, text/event-stream'}, json={'jsonrpc':'2.0', 'id':1, 'method':method, 'params':params or {}})
 
     def test_auth_and_discovery(self):
         self.assertEqual(self.rpc('tools/list', key='wrong').status_code, 401)

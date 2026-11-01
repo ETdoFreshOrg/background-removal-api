@@ -1,7 +1,6 @@
 """Authenticated Streamable HTTP tools over the existing image processor."""
 import base64
 import binascii
-import hmac
 import os
 from typing import Annotated
 
@@ -9,7 +8,6 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ImageContent, TextContent, ToolAnnotations
 from pydantic import Field
-from starlette.responses import JSONResponse
 
 
 def create_mcp(process_image, get_health, max_upload_mb=10):
@@ -48,18 +46,3 @@ def create_mcp(process_image, get_health, max_upload_mb=10):
         return [TextContent(type="text", text=metadata), ImageContent(type="image", data=base64.b64encode(png).decode(), mimeType="image/png")]
 
     return server
-
-
-class RequireMcpKey:
-    def __init__(self, app, api_key):
-        self.app, self.api_key = app, api_key
-
-    async def __call__(self, scope, receive, send):
-        if scope['type'] == 'http':
-            headers = dict(scope.get('headers', []))
-            auth = headers.get(b'authorization', b'').decode('latin1')
-            if not self.api_key:
-                return await JSONResponse({'error': 'MCP authentication is not configured'}, status_code=503)(scope, receive, send)
-            if not hmac.compare_digest(auth, 'Bearer ' + self.api_key):
-                return await JSONResponse({'error': 'Unauthorized'}, status_code=401, headers={'WWW-Authenticate': 'Bearer'})(scope, receive, send)
-        return await self.app(scope, receive, send)

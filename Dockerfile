@@ -17,8 +17,8 @@ RUN pip install -r requirements.txt
 
 COPY app ./app
 
-RUN mkdir -p /models
-VOLUME ["/models"]
+RUN mkdir -p /models /data
+VOLUME ["/models", "/data"]
 
 EXPOSE 8000
 
