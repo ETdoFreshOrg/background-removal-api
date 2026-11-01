@@ -6,11 +6,16 @@ services:
       TORCH_THREADS: ${TORCH_THREADS:-4}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
       API_KEY: ${API_KEY:-}
+      MCP_OWNER_KEY: ${MCP_OWNER_KEY:-}
+      PUBLIC_ORIGIN: https://bgremove.etdofresh.com
+      OAUTH_DB: /data/oauth.db
     volumes:
       - rmbg-models:/models
       - rmbg-history:/app/history
+      - rmbg-oauth:/data
     restart: unless-stopped
 
 volumes:
   rmbg-models:
   rmbg-history:
+  rmbg-oauth:
