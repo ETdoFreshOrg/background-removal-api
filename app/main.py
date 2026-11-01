@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+import threading
 import traceback
 import uuid
 from contextlib import asynccontextmanager
@@ -16,6 +17,7 @@ log = logging.getLogger("bg-remove")
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
 from PIL import Image
 import torch
 from torchvision import transforms
@@ -31,6 +33,7 @@ HISTORY_JSON = HISTORY_DIR / "history.json"
 MAX_HISTORY = 100
 
 _model = None
+_inference_lock = threading.Lock()
 _device = torch.device("cpu")
 _transform = transforms.Compose(
     [
@@ -896,14 +899,21 @@ def health():
 
 
 @app.post("/remove-bg")
-async def remove_bg(
+def remove_bg(
     file: UploadFile = File(...),
     job_id: Optional[str] = Form(None),
 ):
+    # FastAPI runs sync endpoints in its worker pool. Serialize access to the
+    # shared model/history while keeping health checks and MCP discovery alive.
+    with _inference_lock:
+        return _remove_bg_locked(file, job_id)
+
+
+def _remove_bg_locked(file, job_id):
     if _model is None:
         raise HTTPException(status_code=503, detail="Model not loaded yet")
 
-    data = await file.read()
+    data = file.file.read()
     if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(
             status_code=413,
@@ -972,7 +982,7 @@ from .mcp_server import create_mcp, RequireMcpKey
 
 
 async def mcp_process_image(data, filename):
-    response = await remove_bg(UploadFile(filename=filename, file=io.BytesIO(data)), None)
+    response = await run_in_threadpool(remove_bg, UploadFile(filename=filename, file=io.BytesIO(data)), None)
     return response.body, json.dumps({
         "job_id": response.headers.get("X-Job-Id"),
         "processing_time_ms": response.headers.get("X-Processing-Time-Ms"),
