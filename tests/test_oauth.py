@@ -49,7 +49,9 @@ class OAuthTests(unittest.TestCase):
     def test_pkce_audience_scope_and_redirect_checks(self):
         for override in [{'client_id': 'unknown'}, {'redirect_uri': 'https://evil.test/callback'}, {'resource': 'https://other.test/mcp'}, {'scope': 'admin'}, {'code_challenge_method': 'plain'}]:
             self.assertNotEqual(begin(self.client, **override)['page'].status_code, 200)
+        self.assertIn("form-action 'self' " + CLAUDE_REDIRECTS[1] + ';', begin(self.client, redirect_uri=CLAUDE_REDIRECTS[1])['page'].headers['content-security-policy'])
         started = begin(self.client)
+        self.assertIn("form-action 'self' " + CLAUDE_REDIRECTS[0] + ';', started['page'].headers['content-security-policy'])
         consent = self.client.post(PREFIX + '/consent', data={'request': started['request'], 'owner_key': 'fixture-owner-key', 'decision': 'allow'}, headers={'Origin': 'https://testserver'}, follow_redirects=False)
         code = parse_qs(urlsplit(consent.headers['location']).query)['code'][0]
         exchange = {'grant_type': 'authorization_code', 'client_id': CLIENT_ID, 'redirect_uri': CLAUDE_REDIRECTS[0], 'resource': 'https://testserver/mcp', 'code': code, 'code_verifier': started['verifier']}
@@ -63,6 +65,7 @@ class OAuthTests(unittest.TestCase):
         started = begin(self.client, client_id=ETBOT_CLIENT_ID, redirect_uri=ETBOT_REDIRECTS[0])
         self.assertEqual(started['page'].status_code, 200)
         self.assertIn('ET Bot', started['page'].text)
+        self.assertIn("form-action 'self' " + ETBOT_REDIRECTS[0] + ';', started['page'].headers['content-security-policy'])
         consent = self.client.post(PREFIX + '/consent', data={'request': started['request'], 'owner_key': 'fixture-owner-key', 'decision': 'allow'}, headers={'Origin': 'https://testserver'}, follow_redirects=False)
         self.assertTrue(consent.headers['location'].startswith(ETBOT_REDIRECTS[0] + '?'))
         code = parse_qs(urlsplit(consent.headers['location']).query)['code'][0]
