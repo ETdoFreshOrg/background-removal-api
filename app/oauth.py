@@ -218,9 +218,11 @@ class OwnerOAuth:
         request_id = dict(parse_qsl(urlsplit(location).query))['request']
         csrf = random()
         self.pending[digest(request_id)]['csrf'] = digest(csrf)
-        client = self.pending[digest(request_id)]['client']
+        client, callback = self.pending[digest(request_id)]['client'], self.pending[digest(request_id)]['params'].redirect_uri
         page = f'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Authorize Background Removal</title><style>body{{font:18px system-ui;max-width:600px;margin:8vh auto;padding:24px}}input,button{{font:inherit;padding:10px;margin:10px 0;width:100%;box-sizing:border-box}}</style><h1>Authorize {html.escape(client.client_name or 'MCP client')}</h1><p>Allow background removal and model status checks. Uploaded images and results are saved in this server's history.</p><p>Permission: {SCOPE}. Access tokens last 15 minutes; consent lasts 30 days. The owner key is never sent to the connecting app.</p><form method="post" action="{PREFIX}/consent"><input type="hidden" name="request" value="{request_id}"><label>Background Removal MCP owner key<input type="password" name="owner_key" required autocomplete="off"></label><button name="decision" value="allow">Authorize access</button><button name="decision" value="deny" formnovalidate>Cancel</button></form></html>'''
-        response = HTMLResponse(page, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'same-origin', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"})
+        # Browsers apply form-action to the consent POST's redirect, so allow this request's callback too.
+        # The SDK has already matched it exactly against the client's registered redirect URIs.
+        response = HTMLResponse(page, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'same-origin', 'Content-Security-Policy': f"default-src 'none'; style-src 'unsafe-inline'; form-action 'self' {callback}; frame-ancestors 'none'; base-uri 'none'"})
         response.set_cookie(COOKIE, csrf, secure=True, httponly=True, samesite='lax', path=PREFIX + '/consent', max_age=300)
         return response
 
