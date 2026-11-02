@@ -30,6 +30,10 @@ SCOPE = 'bg-remove.process'
 CLIENT_ID = 'bg-remove-claude'
 CLAUDE_REDIRECTS = ['https://claude.ai/api/mcp/auth_callback', 'https://claude.com/api/mcp/auth_callback']
 CLAUDE_CLIENTS = ['https://claude.ai/oauth/mcp-oauth-client-metadata', 'https://claude.com/oauth/mcp-oauth-client-metadata']
+# ET Bot (etbot.etdofresh.com) names itself by its client metadata URL. It is pre-registered with its
+# one exact callback, so the document is never fetched and no other ET Bot callback is accepted.
+ETBOT_CLIENT_ID = 'https://etbot.etdofresh.com/oauth/client-metadata.json'
+ETBOT_REDIRECTS = ['https://etbot.etdofresh.com/api/connectors/oauth/callback']
 PREFIX = '/mcp/oauth'
 COOKIE = 'bg_remove_oauth_csrf'
 digest = lambda text: hashlib.sha256(text.encode()).hexdigest()
@@ -79,6 +83,8 @@ class OwnerOAuth:
     async def get_client(self, client_id):
         if client_id == CLIENT_ID:
             return self.client(client_id, CLAUDE_REDIRECTS, 'Claude / Codex')
+        if client_id == ETBOT_CLIENT_ID:
+            return self.client(client_id, ETBOT_REDIRECTS, 'ET Bot')
         redirects, name = None, 'ChatGPT'
         if client_id in CLAUDE_CLIENTS:
             redirects, name = CLAUDE_REDIRECTS, 'Claude'
