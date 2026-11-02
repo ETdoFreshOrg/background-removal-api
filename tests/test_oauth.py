@@ -6,7 +6,7 @@ from urllib.parse import urlsplit, parse_qs
 
 from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
-from app.oauth import OwnerOAuth, PREFIX, CLIENT_ID, CLAUDE_REDIRECTS, SCOPE, COOKIE
+from app.oauth import OwnerOAuth, PREFIX, CLIENT_ID, CLAUDE_REDIRECTS, ETBOT_CLIENT_ID, ETBOT_REDIRECTS, SCOPE, COOKIE
 from oauth_client import sign_in, begin
 
 
@@ -56,6 +56,19 @@ class OAuthTests(unittest.TestCase):
         for override in [{'code_verifier': 'wrong'}, {'resource': 'https://other.test/mcp'}, {'redirect_uri': 'https://evil.test/callback'}]:
             self.assertEqual(self.client.post(PREFIX + '/token', data={**exchange, **override}).status_code, 400)
         self.assertEqual(self.client.post(PREFIX + '/token', data=exchange).status_code, 200)
+
+    def test_etbot_signs_in_at_its_one_registered_callback(self):
+        for redirect in ['https://etbot.etdofresh.com/api/connectors/oauth/other', 'https://evil.test/api/connectors/oauth/callback']:
+            self.assertEqual(begin(self.client, client_id=ETBOT_CLIENT_ID, redirect_uri=redirect)['page'].status_code, 400)
+        started = begin(self.client, client_id=ETBOT_CLIENT_ID, redirect_uri=ETBOT_REDIRECTS[0])
+        self.assertEqual(started['page'].status_code, 200)
+        self.assertIn('ET Bot', started['page'].text)
+        consent = self.client.post(PREFIX + '/consent', data={'request': started['request'], 'owner_key': 'fixture-owner-key', 'decision': 'allow'}, headers={'Origin': 'https://testserver'}, follow_redirects=False)
+        self.assertTrue(consent.headers['location'].startswith(ETBOT_REDIRECTS[0] + '?'))
+        code = parse_qs(urlsplit(consent.headers['location']).query)['code'][0]
+        exchange = {'grant_type': 'authorization_code', 'client_id': ETBOT_CLIENT_ID, 'redirect_uri': ETBOT_REDIRECTS[0], 'resource': 'https://testserver/mcp', 'code': code, 'code_verifier': started['verifier']}
+        tokens = self.client.post(PREFIX + '/token', data=exchange).json()
+        self.assertEqual(self.use(tokens['access_token']).status_code, 200)
 
     def test_refresh_rotation_replay_and_revocation(self):
         tokens, _ = sign_in(self.client)
